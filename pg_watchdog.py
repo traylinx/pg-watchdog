@@ -18,13 +18,17 @@ import sys
 from datetime import datetime
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-HARVEY_HOME = os.path.realpath(os.path.join(SCRIPT_DIR, "..", "..", "..", ".."))
+HARVEY_HOME = os.environ.get(
+    "HARVEY_HOME", os.path.realpath(os.path.join(SCRIPT_DIR, "..", ".."))
+)
 
 LOG_DIR = os.path.join(HARVEY_HOME, "data", "logs")
 LOG_FILE = os.path.join(LOG_DIR, "pg_watchdog.log")
 BRAIN_JOURNALS = os.path.join(HARVEY_HOME, "data", "Brain", "journals")
 
-AI_URL = os.environ.get("SWITCHAI_URL", "http://localhost:18080") + "/v1/chat/completions"
+AI_URL = (
+    os.environ.get("SWITCHAI_URL", "http://localhost:18080") + "/v1/chat/completions"
+)
 AI_KEY = os.environ.get("SWITCHAI_KEY", "")
 AI_MODEL = os.environ.get("LLM_MODEL", "minimax:MiniMax-M2.7")
 
@@ -48,7 +52,9 @@ def log(msg):
 def run_cmd(cmd, timeout=30):
     """Run a shell command and return (returncode, stdout, stderr)."""
     try:
-        r = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=timeout)
+        r = subprocess.run(
+            cmd, shell=True, capture_output=True, text=True, timeout=timeout
+        )
         return r.returncode, r.stdout.strip(), r.stderr.strip()
     except subprocess.TimeoutExpired:
         return -1, "", "timeout"
@@ -67,15 +73,17 @@ def parse_clusters():
     for line in stdout.splitlines()[1:]:  # skip header
         parts = line.split()
         if len(parts) >= 6:
-            clusters.append({
-                "ver": parts[0],
-                "name": parts[1],
-                "port": parts[2],
-                "status": parts[3],
-                "owner": parts[4],
-                "datadir": parts[5],
-                "logfile": parts[6] if len(parts) > 6 else "",
-            })
+            clusters.append(
+                {
+                    "ver": parts[0],
+                    "name": parts[1],
+                    "port": parts[2],
+                    "status": parts[3],
+                    "owner": parts[4],
+                    "datadir": parts[5],
+                    "logfile": parts[6] if len(parts) > 6 else "",
+                }
+            )
     return clusters
 
 
@@ -253,11 +261,15 @@ def run():
 
         # Step 1: Try simple restart
         success = False
+        last_stderr = ""
         for attempt in range(MAX_RESTART_ATTEMPTS):
             ok, stdout, stderr = try_restart(c["ver"], c["name"])
+            last_stderr = stderr
             if ok and verify_cluster_up(c["ver"], c["name"]):
                 success = True
-                brain_events.append(f"{c['ver']}/{c['name']} restarted successfully (attempt {attempt + 1})")
+                brain_events.append(
+                    f"{c['ver']}/{c['name']} restarted successfully (attempt {attempt + 1})"
+                )
                 break
 
         if success:
@@ -266,13 +278,16 @@ def run():
         # Step 2: AI-assisted diagnosis
         log(f"  Simple restart failed. Calling AI for diagnosis...")
         log_tail = get_log_tail(c["logfile"])
-        last_stderr = stderr
 
         for ai_attempt in range(MAX_AI_ATTEMPTS):
-            diagnosis = ai_diagnose(c["ver"], c["name"], c["port"], last_stderr, log_tail)
+            diagnosis = ai_diagnose(
+                c["ver"], c["name"], c["port"], last_stderr, log_tail
+            )
             if not diagnosis:
                 log("  AI diagnosis unavailable — giving up")
-                brain_events.append(f"{c['ver']}/{c['name']} restart FAILED, AI unavailable")
+                brain_events.append(
+                    f"{c['ver']}/{c['name']} restart FAILED, AI unavailable"
+                )
                 break
 
             fix_cmd = diagnosis.get("fix_command", "")
